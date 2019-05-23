@@ -96,6 +96,8 @@
 
 (def visit-body (sort-by first (rest visits')))
 
+(def visit-keywords (sort (mapv first visit-body)))
+
 (def visit-matrix
   (->> visit-body
        (map rest)
