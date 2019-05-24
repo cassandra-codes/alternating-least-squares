@@ -8,6 +8,23 @@
   [f xs ys]
   (mapv (fn [x] (mapv (fn [y] (f x y)) ys)) xs))
 
+(defn dot
+  "The dot product of two vectors"
+  [xs ys]
+  (->> [xs ys]
+       (apply map *)
+       (reduce +)))
+
+(defn diff-vector
+  "Return a vector that is element-wise difference between `a` and `b`"
+  [a b]
+  (mapv - a b))
+
+(defn L2-norm
+  "The square root of the sums of squares of an vector"
+  [xs]
+  (Math/sqrt (dot xs xs)))
+
 (defn round-in
   "Round the values of a matrix.
    Assumes a vector of vectors of numeric values."
@@ -68,6 +85,14 @@
     (if (= n 0) matrix
         (recur (dec n) (step-once x-marginal y-marginal matrix)))))
 
+(defn add-labels
+  ([header rows]
+   (fn [matrix]
+     (->> matrix
+          (map cons rows)
+          (cons header)
+          (mapv vec)))))
+
 ;;;;; DELETE BELOW WHEN FINISHED ;;;;;
 
 (def visits
@@ -79,11 +104,23 @@
     (remove #(= "0" (last %))
             (cons (first data) (sort (rest data))))))
 
-(def kw-costs (->> keywords rest (map second) (mapv read-string)))
+(def kw-list (mapv first keywords))
+
+(def kw-costs (->> keywords
+                   rest
+                   (map second)
+                   (mapv read-string)
+                   (mapv #(* % 0.000001))))
 
 (def hours (remove #(= "0" (last %)) (open-csv "resources/hours.csv")))
 
-(def hour-costs (->> hours rest (map second) (mapv read-string)))
+(def hour-list (mapv first hours))
+
+(def hour-costs (->> hours
+                     rest
+                     (map second)
+                     (mapv read-string)
+                     (mapv #(* % 0.000001))))
 
 (def missing (diff (map first keywords) (map first visits)))
 
@@ -105,7 +142,7 @@
        (map #(map read-string %))
        (mapv vec)))
 
-(def smoothed-visits (laplace-smooth visit-matrix 0.00001))
+(def smoothed-visits (laplace-smooth visit-matrix 0.001))
 
 (def solved (step-once kw-costs hour-costs smoothed-visits))
 
