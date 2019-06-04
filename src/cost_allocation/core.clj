@@ -49,14 +49,16 @@
   [matrix alpha]
   (mapv #(mapv + (repeat alpha) %) matrix))
 
-(defn ratio-matrix
+(defn weight-matrix
+  "Convert each element in a matrix to a value representing that element's proportion of the sum of its row."
   [mat]
   (let [sums (sum-rows mat)]
     (mapv (fn [row sum] (mapv #(/ % (* 1.0 sum)) row)) mat sums)))
 
-(defn apply-ratios
-  [row-sums ratio-matrix]
-  (mapv (fn [row-sum ratio-vec] (mapv * (repeat row-sum) ratio-vec)) row-sums ratio-matrix))
+(defn apply-weights
+  "Distributes the weights in the `weight-matrix` across a rows summing to the `row-sums` vector" 
+  [row-sums weight-matrix]
+  (mapv (fn [row-sum weight-vec] (mapv * (repeat row-sum) weight-vec)) row-sums weight-matrix))
 
 (defn add-labels
   ([header rows]
@@ -65,6 +67,70 @@
           (map cons rows)
           (cons header)
           (mapv vec)))))
+
+(defn mmult
+  "Multiply an n x m matrix by an m x p matrix to produce an n x p matrix."
+  [xss yss]
+  (let [dot (fn [xs]
+              (fn [ys] (reduce + (mapv * xs ys))))]
+    (mapv (fn [xs] (mapv (dot xs) (transpose yss))) xss)))
+
+(defn seed-matrix
+  [xs ys]
+  (mmult (transpose [xs]) [ys]))
+
+(defn optimize-marginal
+  "Distribute the values in a `marginal`` across their respective rows/columns so that it's proportional to the distributions in the `seed` matrix."
+  [marginal seed]
+  (let [ratios (ratio-matrix seed)]
+    (apply-ratios marginal ratios)))
+
+(defn step
+  "Optimise the `x-marginal` followed by the `y-marginal` once, representing a single iteration towards convergence.
+  The `seed` is a matrix representing the rough shape of the solution matrix we are converging towards.  It could effectively be thought of as a loose training label, as the values in the output matrix will be different from the `seed`'s, but the ratios will be quite similar."
+  [x-marginal y-marginal seed]
+  (let [a (optimize-marginal x-marginal seed)
+        b (optimize-marginal y-marginal (transpose a))]
+    (transpose b)))
+
+(defn converge
+  "Continuously optimise alternating marginals until one of three criteria is met."
+  [x-marginal y-marginal seed & {:keys [threshold max-iter verbose?]
+                                 :or   {threshold 1e-15
+                                        max-iter  1000
+                                        verbose?  false}}]
+  {:pre [(number? threshold) (int? max-iter) (boolean? verbose?)]}
+  (let [normalized-seed (normalize-matrix seed)]
+    (loop [matrix    seed
+           last-loss Integer/MAX_VALUE
+           loss-diff Integer/MAX_VALUE
+           iteration max-iter]
+      (if (or (< last-loss threshold) ;; stop if our loss function reaches an acceptable threshold
+              (< loss-diff threshold) ;; stop if our loss function has hit a local minimum
+              (= iteration 0))        ;; stop if it's taking too long.
+        {:matrix matrix, :loss last-loss, :iterations (- max-iter iteration)}
+        (let* [next (step x-marginal y-marginal matrix)
+               loss (rmse x-marginal (sum-rows matrix))
+               diff (abs (- last-loss loss))]
+          (if verbose? (println {:loss last-loss, :diff loss-diff, :iter iteration}))
+          (recur next loss diff (dec iteration)))))))
+
+(defn normalize-matrix
+  "Bound every element in a matrix to a value between 0 and 1, such that the largest element in the matrix becomes one, the smallest element becomes zero, and all elements in between are a proportional value of the largest element."
+  [matrix]
+  (let* [flattened (flatten matrix)
+         min-value (apply min flattened)
+         max-value (- (apply max flattened) min-value)]
+    (mapv (fn [xs] (mapv (fn [x] (/ (- x min-value) max-value)) xs)) matrix)))
+
+(defn error-matrix
+  [pss qss]
+  (let [diff (fn [p q] (abs (- p q)))]
+    (mapv (fn [ps qs] (mapv diff ps qs)) pss qss)))
+
+(defn matrix-norm
+  [matrix]
+  (reduce + (mapv L2-norm matrix)))
 
 ;;;;; DELETE BELOW WHEN FINISHED ;;;;;
 
@@ -115,71 +181,14 @@
        (map #(map read-string %))
        (mapv vec)))
 
-(def smoothed-visits (laplace-smooth visit-matrix 0.001))
+(def smoothed-visits (laplace-smooth visit-matrix 1e-15))
 
-(def solved (step-once kw-costs hour-costs smoothed-visits))
+(def dummy-visits (mapv (fn [_] (vec (repeat 22 1))) (repeat 73 1)))
 
-(def solved' (step-once kw-costs hour-costs solved))
-
-(def solved'' (step-once kw-costs hour-costs solved'))
-
-(def solved''' (step-once kw-costs hour-costs solved''))
-
-(def solved'''' (step-once kw-costs hour-costs solved'''))
-
-(defn mmult
-  "Multiply an n x m matrix by an m x p matrix to produce an n x p matrix."
-  [xss yss]
-  (let [dot (fn [xs]
-              (fn [ys] (reduce + (mapv * xs ys))))]
-    (mapv (fn [xs] (mapv (dot xs) (transpose yss))) xss)))
-
-(defn seed-matrix
-  [xs ys]
-  (mmult (transpose [xs]) [ys]))
-
-(defn optimize-marginal
-  "Distribute the values in a `marginal`` across their respective rows/columns so that it's proportional to the distributions in the `seed` matrix."
-  [marginal seed]
-  (let [ratios (ratio-matrix seed)]
-    (apply-ratios marginal ratios)))
-
-(defn step
-  "Optimise the `x-marginal` followed by the `y-marginal once`, representing a single iteration towards convergence.
-  The `seed` is a matrix representing the rough shape of the solution matrix we are converging towards.  It could effectively be thought of as a loose training label, as the values in the output matrix will be different from the `seed`'s, but the ratios will be quite similar."
-  [x-marginal y-marginal seed]
-  (let [a (optimize-marginal x-marginal seed)
-        b (optimize-marginal y-marginal (transpose a))]
-    (transpose b)))
-
-(defn converge
-  "Continuously optimise alternating marginals until one of three criteria is met."
-  [x-marginal y-marginal seed threshold max-iter]
-  (loop [matrix    seed
-         last-loss Integer/MAX_VALUE
-         loss-diff Integer/MAX_VALUE
-         iteration max-iter]
-    (println {:loss last-loss, :diff loss-diff, :iter iteration})
-    (if (or (< last-loss threshold) ;; stop if our loss function reaches an acceptable threshold
-            (< loss-diff threshold) ;; stop if our loss function has hit a local minimum
-            (= iteration 0))        ;; stop if it's taking too long.
-      {:matrix matrix :loss last-loss, :iterations (- max-iter iteration)}
-      (let* [next (step x-marginal y-marginal matrix)
-             loss (rmse y-marginal (sum-cols matrix))
-             diff (abs (- last-loss loss))]
-        (recur next loss diff (dec iteration))))))
-
-(defn normalize-matrix
-  "Bound every element in a matrix to a value between 0 and 1, such that the largest element in the matrix becomes one, the smallest element becomes zero, and all elements in between are a proportional value of the largest element."
-  [matrix]
-  (let* [flattened (flatten matrix)
-         max-value (apply max flattened)]
-    (mapv (fn [xs] (mapv (fn [x] (/ x max-value)) xs)) matrix)))
-
-(defn softmax
-  [xs]
-  (let* [exp (fn [n] (expt Math/E n))
-         log-c (- (apply max xs))
-         zs  (mapv exp (mapv + (repeat log-c) xs))
-         denom (reduce + zs)]
-    (mapv / zs (repeat denom))))
+(def cost-per-visit3
+  (mapv
+   (fn
+     [xs ys]
+     (mapv (fn [x y] (if (zero? y) 0 (/ x y))) xs ys))
+   cost-per-visit2
+   visit-matrix))
