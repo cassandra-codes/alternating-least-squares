@@ -1,6 +1,6 @@
 # cost-allocation
 
-A Clojure library designed to ... well, that part is up to you.
+Not really alternating least squares, but it was the closest approximation.  It alternates minimising the RMSE of two imputed marginals against their known counterparts until both losses are below some threshold.  It uses a "seed" matrix to help guide it, since for this particular problem, we can make strong assumptions about the shape of the matrix based on other data we have available.
 
 ## Usage
 
