@@ -21,7 +21,7 @@
   (mapv - a b))
 
 (defn L2-norm
-  "The square root of the sums of squares of an vector"
+  "The square root of the sums of squares of a vector"
   [xs]
   (Math/sqrt (dot xs xs)))
 
@@ -35,7 +35,7 @@
   (apply mapv vector matrix))
 
 (defn sum-rows
-  "A vector of the sums of each row of a matrix"
+  "A vector of the sums of each row in a matrix"
   [matrix]
   (mapv #(reduce + %) matrix))
 
@@ -56,7 +56,7 @@
     (mapv (fn [row sum] (mapv #(/ % (* 1.0 sum)) row)) mat sums)))
 
 (defn apply-weights
-  "Distributes the weights in the `weight-matrix` across a rows summing to the `row-sums` vector" 
+  "Distributes the weights in the `weight-matrix` across the rows summing to the `row-sums` vector" 
   [row-sums weight-matrix]
   (mapv (fn [row-sum weight-vec] (mapv * (repeat row-sum) weight-vec)) row-sums weight-matrix))
 
@@ -80,14 +80,17 @@
   (mmult (transpose [xs]) [ys]))
 
 (defn optimize-marginal
-  "Distribute the values in a `marginal`` across their respective rows/columns so that it's proportional to the distributions in the `seed` matrix."
+  "Distribute the values in a `marginal` across their respective rows/columns so 
+  that it's proportional to the distributions in the `seed` matrix."
   [marginal seed]
   (let [ratios (ratio-matrix seed)]
     (apply-ratios marginal ratios)))
 
 (defn step
   "Optimise the `x-marginal` followed by the `y-marginal` once, representing a single iteration towards convergence.
-  The `seed` is a matrix representing the rough shape of the solution matrix we are converging towards.  It could effectively be thought of as a loose training label, as the values in the output matrix will be different from the `seed`'s, but the ratios will be quite similar."
+  The `seed` is a matrix representing the rough shape of the solution matrix we are converging towards.  
+  It could effectively be thought of as a loose training label, as the values in the output matrix will be 
+  different from the `seed`'s, but the ratios will be quite similar."
   [x-marginal y-marginal seed]
   (let [a (optimize-marginal x-marginal seed)
         b (optimize-marginal y-marginal (transpose a))]
