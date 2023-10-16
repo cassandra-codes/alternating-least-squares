@@ -1,6 +1,6 @@
 Not really alternating least squares, but it was the closest approximation.  It alternates minimising the RMSE of two imputed marginals against their known counterparts until both losses are below some threshold.  It uses a "seed" matrix to help guide it, since for this particular problem, we can make strong assumptions about the shape of the matrix based on other data we have available.
 
-This was originally intended for a professional project which has since been scrapped as the company is now defunct.
+This was originally intended for a professional project which has since been scrapped as the company went defunct while I was writing it.
 
 ## Usage
 
